@@ -1,0 +1,45 @@
+{
+  "name": "trading-bot",
+  "version": "2.0.0",
+  "description": "نظام تداول آلي احترافي لشبكات EVM مع Oracle حي، تنبيهات Telegram، Paper Trading، وإدارة مخاطر كاملة",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js start",
+    "dev": "ts-node src/index.ts start",
+    "stop": "node dist/index.js stop",
+    "status": "node dist/index.js status",
+    "paper:on": "node dist/index.js paper on",
+    "paper:off": "node dist/index.js paper off",
+    "network": "node dist/index.js network"
+  },
+  "keywords": [
+    "trading",
+    "bot",
+    "evm",
+    "defi",
+    "sniper",
+    "chainlink",
+    "telegram"
+  ],
+  "author": "Abu Jamal Abdel Nasser Al-Shawki",
+  "license": "MIT",
+  "dependencies": {
+    "@chainlink/contracts": "^0.6.1",
+    "axios": "^1.6.2",
+    "better-sqlite3": "^9.2.2",
+    "dotenv": "^16.3.1",
+    "ethers": "^6.10.0",
+    "node-telegram-bot-api": "^0.64.0",
+    "pino": "^8.17.1",
+    "pino-pretty": "^10.3.1",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/node": "^20.10.5",
+    "@types/node-telegram-bot-api": "^0.64.0",
+    "@types/yargs": "^17.0.32",
+    "typescript": "^5.3.3"
+  }
+}
