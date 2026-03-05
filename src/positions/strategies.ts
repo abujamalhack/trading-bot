@@ -1,44 +1,80 @@
-import { Position } from '../types';
-import { config } from '../config';
 import { ethers } from 'ethers';
+import { config } from '../config';
 
-export function checkExitStrategies(
-  position: Position,
-  currentPrice: number
-): { sell: boolean; amountToSell: bigint; reason?: string } {
-  // حساب نسبة الربح/الخسارة
-  const profitPercent = (currentPrice - position.entryPrice) / position.entryPrice;
+export interface Contracts {
+  factory: ethers.Contract;
+  router: ethers.Contract;
+}
 
-  // وقف الخسارة الثابت
-  if (profitPercent <= -config.stopLossPercent) {
-    return { sell: true, amountToSell: position.remainingAmount, reason: 'stop loss' };
+// ABI للـ Factory
+const factoryABI = [
+  'event PairCreated(address indexed token0, address indexed token1, address pair, uint)',
+  'function getPair(address tokenA, address tokenB) external view returns (address pair)',
+  'function allPairs(uint256) external view returns (address pair)',
+  'function allPairsLength() external view returns (uint256)',
+];
+
+// ABI للـ Router
+const routerABI = [
+  'function getAmountsOut(uint amountIn, address[] memory path) public view returns (uint[] memory amounts)',
+  'function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable returns (uint[] memory amounts)',
+  'function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)',
+  'function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)',
+  'function WETH() external pure returns (address)',
+];
+
+// متغيرات مؤقتة لتخزين العقود بعد التهيئة (للاستخدام في getRouter)
+let cachedFactory: ethers.Contract | null = null;
+let cachedRouter: ethers.Contract | null = null;
+
+/**
+ * تهيئة عقود الـ Factory والـ Router والتحقق من صحتها.
+ * @param provider - مزود الاتصال بالشبكة (WebSocket أو HTTP)
+ * @returns كائن يحتوي على factory و router
+ */
+export async function initContracts(provider: ethers.Provider): Promise<Contracts> {
+  const factory = new ethers.Contract(config.factoryAddress, factoryABI, provider);
+  const router = new ethers.Contract(config.routerAddress, routerABI, provider);
+
+  // تحقق من صحة العناوين: التأكد من أن WETH في الـ router يطابق wnativeAddress في الإعدادات
+  const weth = await router.WETH();
+  if (weth.toLowerCase() !== config.wnativeAddress.toLowerCase()) {
+    throw new Error(`Router WETH mismatch: expected ${config.wnativeAddress}, got ${weth}`);
   }
 
-  // خروج جزئي عند 25% (إذا لم يتم بيع أي جزء بعد)
-  if (profitPercent >= config.takeProfit1 && position.soldPortions.length === 0) {
-    // بيع النسبة المحددة من الكمية الأصلية
-    const sellAmount = (position.amountOut * BigInt(Math.floor(config.takeProfit1Percent * 100))) / 100n;
-    return { sell: true, amountToSell: sellAmount, reason: 'take profit 1' };
-  }
+  // تخزين العقود في الذاكرة المؤقتة
+  cachedFactory = factory;
+  cachedRouter = router;
 
-  // خروج جزئي عند 50% (إذا تم بيع الجزء الأول فقط)
-  if (profitPercent >= config.takeProfit2 && position.soldPortions.length === 1) {
-    const sellAmount = (position.amountOut * BigInt(Math.floor(config.takeProfit2Percent * 100))) / 100n;
-    return { sell: true, amountToSell: sellAmount, reason: 'take profit 2' };
-  }
+  return { factory, router };
+}
 
-  // Trailing stop للكمية المتبقية بعد تفعيل الشرط
-  if (profitPercent >= config.trailingStopActivation) {
-    // إذا كان السعر الحالي أعلى من أعلى سعر سابق، نحدّث أعلى سعر
-    if (currentPrice > position.highestPrice) {
-      position.highestPrice = currentPrice;
-    }
-    // إذا هبط السعر من أعلى سعر بأكثر من المسافة المسموحة، نبيع الكمية المتبقية
-    const dropFromPeak = (position.highestPrice - currentPrice) / position.highestPrice;
-    if (dropFromPeak >= config.trailingStopDistance) {
-      return { sell: true, amountToSell: position.remainingAmount, reason: 'trailing stop' };
-    }
+/**
+ * الحصول على كائن الـ Router (بعد التهيئة). إذا لم يتم تهيئته بعد، يتم تهيئته أولاً.
+ * @param provider - مزود الاتصال بالشبكة (مطلوب فقط إذا لم يتم التهيئة مسبقاً)
+ * @returns عقد الـ Router
+ */
+export async function getRouter(provider: ethers.Provider): Promise<ethers.Contract> {
+  if (!cachedRouter) {
+    await initContracts(provider);
   }
+  if (!cachedRouter) {
+    throw new Error('Failed to initialize router');
+  }
+  return cachedRouter;
+}
 
-  return { sell: false, amountToSell: 0n };
+/**
+ * الحصول على كائن الـ Factory (بعد التهيئة).
+ * @param provider - مزود الاتصال بالشبكة (مطلوب فقط إذا لم يتم التهيئة مسبقاً)
+ * @returns عقد الـ Factory
+ */
+export async function getFactory(provider: ethers.Provider): Promise<ethers.Contract> {
+  if (!cachedFactory) {
+    await initContracts(provider);
+  }
+  if (!cachedFactory) {
+    throw new Error('Failed to initialize factory');
+  }
+  return cachedFactory;
 }
